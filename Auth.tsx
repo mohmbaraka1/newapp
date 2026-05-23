@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Loader2 } from "lucide-react";
+import { authAPI } from "./api";
+import { useAuthContext } from "./AuthContext";
 
 export default function Auth() {
+  const { login, isLoggedIn } = useAuthContext();
   const [, setLocation] = useLocation();
-  const { loading } = useAuth();
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [userType, setUserType] = useState<"idea" | "skill" | "investor">("idea");
   const [formData, setFormData] = useState({
     name: "",
@@ -20,34 +21,48 @@ export default function Auth() {
   });
   const [error, setError] = useState("");
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  useEffect(() => {
+    if (isLoggedIn) setLocation("/dashboard");
+  }, [isLoggedIn]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleManuLogin = () => {
-    const loginUrl = getLoginUrl("/dashboard");
-    window.location.href = loginUrl;
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!isLogin) {
-      if (formData.password !== formData.confirmPassword) {
-        setError("كلمات المرور غير متطابقة");
-        return;
-      }
-      if (formData.password.length < 6) {
-        setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-        return;
-      }
+    if (!isLoginMode) {
+      if (formData.password !== formData.confirmPassword)
+        return setError("كلمات المرور غير متطابقة");
+      if (formData.password.length < 6)
+        return setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
     }
 
-    // For now, redirect to Manus OAuth
-    handleManuLogin();
+    setLoading(true);
+    try {
+      let result;
+      if (isLoginMode) {
+        result = await authAPI.login(formData.email, formData.password);
+      } else {
+        result = await authAPI.register(
+          formData.name,
+          formData.email,
+          formData.password,
+          userType
+        );
+      }
+      login(result.token, result.user);
+      setLocation("/dashboard");
+    } catch (err: any) {
+      setError(err.message || "حدث خطأ، حاول مرة أخرى");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (isLoggedIn) return null;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -79,24 +94,23 @@ export default function Auth() {
 
         {/* Title */}
         <h1 className="text-2xl font-bold text-center text-foreground mb-2">
-          {isLogin ? "دخول" : "إنشاء حساب"}
+          {isLoginMode ? "دخول" : "إنشاء حساب"}
         </h1>
         <p className="text-sm text-center text-muted-foreground mb-6">
-          {isLogin
+          {isLoginMode
             ? "رحباً بعودتك إلى منصة AZZA"
             : "انضم إلى مجتمع الأفكار والمشاريع"}
         </p>
 
-        {/* Error message */}
+        {/* Error */}
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-sm">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleRegister} className="space-y-4">
-          {/* Name field (register only) */}
-          {!isLogin && (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {!isLoginMode && (
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 الاسم الكامل
@@ -105,15 +119,14 @@ export default function Auth() {
                 type="text"
                 name="name"
                 value={formData.name}
-                onChange={handleInputChange}
+                onChange={handleChange}
                 placeholder="أدخل اسمك الكامل"
                 className="bg-background border-border/50"
-                required={!isLogin}
+                required
               />
             </div>
           )}
 
-          {/* Email field */}
           <div>
             <label className="text-sm font-medium text-muted-foreground mb-2 block">
               البريد الإلكتروني
@@ -122,15 +135,14 @@ export default function Auth() {
               type="email"
               name="email"
               value={formData.email}
-              onChange={handleInputChange}
+              onChange={handleChange}
               placeholder="your@email.com"
               className="bg-background border-border/50"
               required
             />
           </div>
 
-          {/* User Type (register only) */}
-          {!isLogin && (
+          {!isLoginMode && (
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-3 block">
                 نوع الحساب
@@ -140,26 +152,25 @@ export default function Auth() {
                   { value: "idea" as const, label: "صاحب فكرة", icon: "💡" },
                   { value: "skill" as const, label: "صاحب مهارة", icon: "🎯" },
                   { value: "investor" as const, label: "مستثمر", icon: "💰" },
-                ].map(type => (
+                ].map(t => (
                   <button
-                    key={type.value}
+                    key={t.value}
                     type="button"
-                    onClick={() => setUserType(type.value)}
+                    onClick={() => setUserType(t.value)}
                     className={`p-3 rounded-lg border-2 transition-all text-center ${
-                      userType === type.value
+                      userType === t.value
                         ? "border-primary bg-primary/10"
-                        : "border-border/30 bg-transparent hover:border-primary/50"
+                        : "border-border/30 hover:border-primary/50"
                     }`}
                   >
-                    <div className="text-2xl mb-1">{type.icon}</div>
-                    <div className="text-xs font-medium text-foreground">{type.label}</div>
+                    <div className="text-2xl mb-1">{t.icon}</div>
+                    <div className="text-xs font-medium text-foreground">{t.label}</div>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Password field */}
           <div>
             <label className="text-sm font-medium text-muted-foreground mb-2 block">
               كلمة المرور
@@ -168,15 +179,14 @@ export default function Auth() {
               type="password"
               name="password"
               value={formData.password}
-              onChange={handleInputChange}
+              onChange={handleChange}
               placeholder="••••••••"
               className="bg-background border-border/50"
-              required={!isLogin}
+              required
             />
           </div>
 
-          {/* Confirm Password field (register only) */}
-          {!isLogin && (
+          {!isLoginMode && (
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 تأكيد كلمة المرور
@@ -185,15 +195,14 @@ export default function Auth() {
                 type="password"
                 name="confirmPassword"
                 value={formData.confirmPassword}
-                onChange={handleInputChange}
+                onChange={handleChange}
                 placeholder="••••••••"
                 className="bg-background border-border/50"
-                required={!isLogin}
+                required
               />
             </div>
           )}
 
-          {/* Submit button */}
           <Button
             type="submit"
             disabled={loading}
@@ -204,7 +213,7 @@ export default function Auth() {
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 جاري المعالجة...
               </>
-            ) : isLogin ? (
+            ) : isLoginMode ? (
               "دخول"
             ) : (
               "إنشاء حساب"
@@ -212,32 +221,12 @@ export default function Auth() {
           </Button>
         </form>
 
-        {/* Divider */}
-        <div className="my-6 flex items-center gap-3">
-          <div className="flex-1 h-px bg-border/30" />
-          <span className="text-xs text-muted-foreground">أو</span>
-          <div className="flex-1 h-px bg-border/30" />
-        </div>
-
-        {/* OAuth Login */}
-        <Button
-          onClick={handleManuLogin}
-          variant="outline"
-          className="w-full border-primary/30 text-primary hover:bg-primary/10"
-        >
-          {isLogin ? "دخول" : "إنشاء حساب"} عبر Manus
-        </Button>
-
-        {/* Toggle between login and register */}
         <div className="mt-6 text-center text-sm text-muted-foreground">
-          {isLogin ? (
+          {isLoginMode ? (
             <>
               ليس لديك حساب؟{" "}
               <button
-                onClick={() => {
-                  setIsLogin(false);
-                  setError("");
-                }}
+                onClick={() => { setIsLoginMode(false); setError(""); }}
                 className="text-primary hover:underline font-medium"
               >
                 إنشاء حساب جديد
@@ -247,10 +236,7 @@ export default function Auth() {
             <>
               هل لديك حساب بالفعل؟{" "}
               <button
-                onClick={() => {
-                  setIsLogin(true);
-                  setError("");
-                }}
+                onClick={() => { setIsLoginMode(true); setError(""); }}
                 className="text-primary hover:underline font-medium"
               >
                 دخول

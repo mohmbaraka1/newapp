@@ -5,9 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Send, X } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
-import { Streamdown } from "streamdown";
 
 interface ChatMessage {
   id: string;
@@ -27,30 +26,36 @@ export default function ChatPage() {
   const sendMessageMutation = trpc.chat.send.useMutation();
   const getHistoryQuery = trpc.chat.getHistory.useQuery();
 
-  // Load chat history
   useEffect(() => {
     if (getHistoryQuery.data) {
-      const history = getHistoryQuery.data as any;
-      setMessages(history.map((msg: any) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        timestamp: new Date(msg.createdAt),
-      })));
+      const history = getHistoryQuery.data as any[];
+      setMessages(
+        history.flatMap((msg: any) => [
+          {
+            id: `${msg.id}-user`,
+            role: "user" as const,
+            content: msg.message,
+            timestamp: new Date(msg.createdAt),
+          },
+          {
+            id: `${msg.id}-assistant`,
+            role: "assistant" as const,
+            content: msg.response,
+            timestamp: new Date(msg.createdAt),
+          },
+        ])
+      );
     }
   }, [getHistoryQuery.data]);
 
-  // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!inputValue.trim()) return;
 
-    // Add user message to UI
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
@@ -59,23 +64,19 @@ export default function ChatPage() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const sentText = inputValue;
     setInputValue("");
     setIsLoading(true);
 
     try {
-      // Send message to AI
-      const response = await sendMessageMutation.mutateAsync({
-        message: inputValue,
-      });
+      const result = await sendMessageMutation.mutateAsync({ message: sentText });
 
-      // Add AI response
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: response.reply,
+        content: result.response,
         timestamp: new Date(),
       };
-
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
       console.error("Error sending message:", error);
@@ -108,29 +109,22 @@ export default function ChatPage() {
 
       {/* Chat Container */}
       <div className="flex-1 container mx-auto px-4 py-8 max-w-2xl flex flex-col">
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground mb-2 flex items-center gap-2">
             <span className="text-primary">✦</span> مساعد AZZA الذكي
           </h1>
-          <p className="text-muted-foreground">
-            اسأل عن الأفكار والمشاريع والمستثمرين والمزيد
-          </p>
+          <p className="text-muted-foreground">اسأل عن الأفكار والمشاريع والمستثمرين والمزيد</p>
         </div>
 
-        {/* Messages Container */}
+        {/* Messages */}
         <Card className="flex-1 border-border/50 bg-card/50 backdrop-blur p-6 mb-6 overflow-y-auto max-h-[60vh]">
           <div className="space-y-4">
             {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-center">
+              <div className="flex items-center justify-center h-full text-center py-12">
                 <div>
                   <div className="text-5xl mb-4">💬</div>
-                  <p className="text-muted-foreground text-lg">
-                    ابدأ محادثة مع مساعد AZZA الذكي
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    يمكنك السؤال عن الأفكار والمشاريع والمستثمرين والفرص
-                  </p>
+                  <p className="text-muted-foreground text-lg">ابدأ محادثة مع مساعد AZZA الذكي</p>
+                  <p className="text-sm text-muted-foreground mt-2">يمكنك السؤال عن الأفكار والمشاريع والمستثمرين والفرص</p>
                 </div>
               </div>
             ) : (
@@ -144,14 +138,10 @@ export default function ChatPage() {
                       className={`max-w-xs lg:max-w-md px-4 py-3 rounded-lg ${
                         message.role === "user"
                           ? "bg-primary text-primary-foreground rounded-br-none"
-                          : "bg-muted text-muted-foreground border border-border/50 rounded-bl-none"
+                          : "bg-muted text-foreground border border-border/50 rounded-bl-none"
                       }`}
                     >
-                      {message.role === "assistant" ? (
-                        <Streamdown>{message.content}</Streamdown>
-                      ) : (
-                        <p className="text-sm">{message.content}</p>
-                      )}
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                       <p className="text-xs opacity-70 mt-1">
                         {message.timestamp.toLocaleTimeString("ar-SA")}
                       </p>
@@ -160,9 +150,9 @@ export default function ChatPage() {
                 ))}
                 {isLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-muted text-muted-foreground border border-border/50 px-4 py-3 rounded-lg rounded-bl-none flex items-center gap-2">
+                    <div className="bg-muted border border-border/50 px-4 py-3 rounded-lg rounded-bl-none flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">جاري الكتابة...</span>
+                      <span className="text-sm text-muted-foreground">جاري الكتابة...</span>
                     </div>
                   </div>
                 )}
@@ -172,7 +162,7 @@ export default function ChatPage() {
           </div>
         </Card>
 
-        {/* Input Form */}
+        {/* Input */}
         <form onSubmit={handleSendMessage} className="flex gap-3">
           <Input
             type="text"
@@ -187,11 +177,7 @@ export default function ChatPage() {
             disabled={isLoading || !inputValue.trim()}
             className="bg-primary text-primary-foreground hover:bg-primary/90 px-6"
           >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </form>
       </div>

@@ -1,56 +1,50 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import { LanguageProvider } from "./contexts/LanguageContext";
-import Home from "./pages/Home";
-import Dashboard from "./pages/Dashboard";
-import Auth from "./pages/Auth";
-import CreateIdea from "./pages/CreateIdea";
-import IdeasGallery from "./pages/IdeasGallery";
-import ChatPage from "./pages/ChatPage";
+import Home from "./Home";
+import Auth from "./Auth";
+import Dashboard from "./Dashboard";
+import { useAuthContext } from "./AuthContext";
+import { Loader2 } from "lucide-react";
+import { useLocation } from "wouter";
+import { useEffect } from "react";
 
-function Router() {
-  // make sure to consider if you need authentication for certain routes
+function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
+  const { isLoggedIn, loading } = useAuthContext();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!loading && !isLoggedIn) {
+      setLocation("/login");
+    }
+  }, [isLoggedIn, loading]);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
+
+  if (!isLoggedIn) return null;
+
+  return <Component />;
+}
+
+export default function App() {
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/dashboard"} component={Dashboard} />
-      <Route path={"/login"} component={Auth} />
-      <Route path={"/register"} component={Auth} />
-      <Route path={"/create-idea"} component={CreateIdea} />
-      <Route path={"/ideas"} component={IdeasGallery} />
-      <Route path={"/chat"} component={ChatPage} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
+      <Route path="/" component={Home} />
+      <Route path="/login" component={Auth} />
+      <Route path="/register" component={Auth} />
+      <Route path="/dashboard">
+        {() => <PrivateRoute component={Dashboard} />}
+      </Route>
+      <Route>
+        <div className="min-h-screen flex items-center justify-center text-foreground">
+          <div className="text-center">
+            <div className="text-6xl mb-4">404</div>
+            <p className="text-muted-foreground">الصفحة غير موجودة</p>
+          </div>
+        </div>
+      </Route>
     </Switch>
   );
 }
-
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <LanguageProvider>
-        <ThemeProvider
-          defaultTheme="light"
-          // switchable
-        >
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </ThemeProvider>
-      </LanguageProvider>
-    </ErrorBoundary>
-  );
-}
-
-export default App;

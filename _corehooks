@@ -1,0 +1,16 @@
+import { useState, useEffect } from "react";
+import { getUser, isLoggedIn, clearAuth } from "@/api";
+
+export function useAuth() {
+  const [user, setUser] = useState<any>(getUser());
+  const [loading, setLoading] = useState(false);
+  const isAuthenticated = isLoggedIn();
+
+  const logout = () => {
+    clearAuth();
+    setUser(null);
+    window.location.href = "/";
+  };
+
+  return { user, loading, isAuthenticated, logout };
+}
